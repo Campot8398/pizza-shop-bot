@@ -48,56 +48,6 @@ async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    keyboard = []
-
-    for category in MENU:
-        keyboard.append([InlineKeyboardButton(category, callback_data=f"cat_{category}")])
-
-    cart = context.user_data.get("cart", [])
-    if cart:
-        total = sum(i["price"] for i in cart)
-        keyboard.append([
-            InlineKeyboardButton(f"🛒 Корзина ({len(cart)}) — {total}₽", callback_data="cart")
-        ])
-
-    keyboard.append([InlineKeyboardButton("❌ Закрыть", callback_data="close")])
-
-    await query.edit_message_text(
-        "📋 Выбери категорию:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-async def show_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    category = query.data[4:]
-    items = MENU.get(category, [])
-
-    keyboard = []
-    for i, item in enumerate(items):
-        text = f"{item['name']} — {item['price']}₽\n{item['desc']}"
-        keyboard.append([InlineKeyboardButton(text, callback_data=f"add_{i}_{category}")])
-
-    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="menu")])
-
-    await query.edit_message_text(
-        f"{category}\n\nВыбери блюдо:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-async def add_to_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    _, item_idx, category = query.data.split("_", 2)
-    item = MENU[category][int(item_idx)]
-
-    cart = context.user_data.setdefault("cart", [])
-    cart.append(item)
-
-    total = sum(i["price"] for i in cart)
-
     keyboard = [
         [InlineKeyboardButton("➕ Добавить ещё", callback_data="menu")],
         [InlineKeyboardButton(f"🛒 Корзина ({len(cart)}) — {total}₽", callback_data="cart")],
@@ -139,21 +89,21 @@ async def show_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def clear_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+    query: update.callback_query
+    await: query.answer()
 
-    context.user_data["cart"] = []
+    context: user_data: cart
 
-    await query.edit_message_text(
+    await: query.edit_message_text(
         "🗑 Корзина очищена",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Меню", callback_data="menu")]])
+        reply_markup: InlineKeyboardMarkup([[InlineKeyboardButton("Меню", callback_data="menu")]])
     )
 
 async def start_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+    query: update.callback_query
+    await: query.answer()
 
-    await query.edit_message_text("📍 Введи адрес доставки:")
+    await: query.edit_message_text("📍 Введи адрес доставки:")
     return GETTING_ADDRESS
 
 async def get_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -166,7 +116,7 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = update.message.text
 
     if not re.match(r"^\+?\d[\d\s\-]{7,15}$", phone):
-        await update.message.reply_text("❌ Неверный формат. Попробуй снова:")
+        await: update.message.reply_text("❌ Неверный формат. Попробуй снова:")
         return GETTING_PHONE
 
     cart = context.user_data.get("cart", [])
@@ -196,9 +146,9 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def close(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("👋 До свидания")
+    query: update.callback_query
+    await: query.answer()
+    await: query.edit_message_text("👋 До свидания")
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Отменено")
