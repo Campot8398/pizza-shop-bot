@@ -1,10 +1,19 @@
 import asyncio
 import logging
+import os
+import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler,
+    MessageHandler, filters, ContextTypes, ConversationHandler
+)
 
-TOKEN = "8999253238:AAGdBsxcBOsbjstAH5e374VY8IBsPvC8bWY"
-ADMIN_CHAT_ID = "7337131157"
+TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID"))
+
+GETTING_ADDRESS, GETTING_PHONE = range(2)
+
+logging.basicConfig(level=logging.INFO)
 
 MENU = {
     "🍕 Пицца": [
@@ -24,133 +33,186 @@ MENU = {
     ],
 }
 
-GETTING_ADDRESS, GETTING_PHONE = range(2)
-logging.basicConfig(level=logging.INFO)
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
     context.user_data["cart"] = []
+
     keyboard = [[InlineKeyboardButton("🛍️ Открыть меню", callback_data="menu")]]
+
     await update.message.reply_text(
-        "🍕 Добро пожаловать в наш магазин еды!\n\nДоставка за 30-45 минут 🚀\n\nНажми кнопку ниже 👇",
+        "🍕 Добро пожаловать!\n\nДоставка 30-45 минут 🚀",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     keyboard = []
-    for category in MENU.keys():
+
+    for category in MENU:
         keyboard.append([InlineKeyboardButton(category, callback_data=f"cat_{category}")])
+
     cart = context.user_data.get("cart", [])
     if cart:
         total = sum(i["price"] for i in cart)
-        keyboard.append([InlineKeyboardButton(f"🛒 Корзина ({len(cart)}) — {total}₽", callback_data="cart")])
+        keyboard.append([
+            InlineKeyboardButton(f"🛒 Корзина ({len(cart)}) — {total}₽", callback_data="cart")
+        ])
+
     keyboard.append([InlineKeyboardButton("❌ Закрыть", callback_data="close")])
-    await query.edit_message_text("📋 Выбери категорию:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    await query.edit_message_text(
+        "📋 Выбери категорию:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 async def show_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     category = query.data[4:]
     items = MENU.get(category, [])
+
     keyboard = []
     for i, item in enumerate(items):
-        keyboard.append([InlineKeyboardButton(f"{item['name']} — {item['price']}₽", callback_data=f"add_{i}_{category}")])
+        text = f"{item['name']} — {item['price']}₽\n{item['desc']}"
+        keyboard.append([InlineKeyboardButton(text, callback_data=f"add_{i}_{category}")])
+
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="menu")])
-    await query.edit_message_text(f"{category}\n\nВыбери блюдо:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    await query.edit_message_text(
+        f"{category}\n\nВыбери блюдо:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 async def add_to_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    parts = query.data.split("_", 2)
-    item_idx = int(parts[1])
-    category = parts[2]
-    item = MENU[category][item_idx]
-    if "cart" not in context.user_data:
-        context.user_data["cart"] = []
-    context.user_data["cart"].append(item)
-    cart = context.user_data["cart"]
+
+    _, item_idx, category = query.data.split("_", 2)
+    item = MENU[category][int(item_idx)]
+
+    cart = context.user_data.setdefault("cart", [])
+    cart.append(item)
+
     total = sum(i["price"] for i in cart)
+
     keyboard = [
         [InlineKeyboardButton("➕ Добавить ещё", callback_data="menu")],
         [InlineKeyboardButton(f"🛒 Корзина ({len(cart)}) — {total}₽", callback_data="cart")],
     ]
+
     await query.edit_message_text(
-        f"✅ {item['name']} добавлен!\n💰 Цена: {item['price']}₽\n\n🛒 В корзине: {len(cart)} шт. на {total}₽",
+        f"✅ {item['name']} добавлен\n💰 {item['price']}₽",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 async def show_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     cart = context.user_data.get("cart", [])
+
     if not cart:
-        keyboard = [[InlineKeyboardButton("🛍️ В меню", callback_data="menu")]]
-        await query.edit_message_text("🛒 Корзина пуста!", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text(
+            "🛒 Корзина пуста",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Меню", callback_data="menu")]])
+        )
         return
-    text = "🛒 Твоя корзина:\n\n"
+
+    text = "🛒 Корзина:\n\n"
+    total = 0
+
     for item in cart:
         text += f"• {item['name']} — {item['price']}₽\n"
-    total = sum(i["price"] for i in cart)
-    text += f"\n💰 Итого: {total}₽\n🚚 Доставка бесплатно"
+        total += item["price"]
+
+    text += f"\n💰 Итого: {total}₽"
+
     keyboard = [
-        [InlineKeyboardButton("✅ Оформить заказ", callback_data="order")],
-        [InlineKeyboardButton("🗑️ Очистить", callback_data="clear")],
-        [InlineKeyboardButton("◀️ В меню", callback_data="menu")],
+        [InlineKeyboardButton("✅ Оформить", callback_data="order")],
+        [InlineKeyboardButton("🗑 Очистить", callback_data="clear")],
+        [InlineKeyboardButton("◀️ Меню", callback_data="menu")],
     ]
+
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def clear_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     context.user_data["cart"] = []
-    keyboard = [[InlineKeyboardButton("🛍️ В меню", callback_data="menu")]]
-    await query.edit_message_text("🗑️ Корзина очищена!", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    await query.edit_message_text(
+        "🗑 Корзина очищена",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Меню", callback_data="menu")]])
+    )
 
 async def start_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("📍 Введи адрес доставки:\n\nНапример: ул. Пушкина, д. 10, кв. 5")
+
+    await query.edit_message_text("📍 Введи адрес доставки:")
     return GETTING_ADDRESS
 
 async def get_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["address"] = update.message.text
-    await update.message.reply_text("📞 Введи номер телефона:\n\nНапример: +7 900 123 45 67")
+
+    await update.message.reply_text("📞 Введи телефон:")
     return GETTING_PHONE
 
 async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = update.message.text
+
+    if not re.match(r"^\+?\d[\d\s\-]{7,15}$", phone):
+        await update.message.reply_text("❌ Неверный формат. Попробуй снова:")
+        return GETTING_PHONE
+
     cart = context.user_data.get("cart", [])
     address = context.user_data.get("address", "")
+
     user = update.effective_user
+    username = f"@{user.username}" if user.username else "без username"
+
     total = sum(i["price"] for i in cart)
-    order_text = f"🆕 НОВЫЙ ЗАКАЗ!\n\n👤 {user.first_name} (@{user.username})\n📞 {phone}\n📍 {address}\n\n🛒 Заказ:\n"
+
+    text = f"🆕 Заказ\n\n👤 {user.first_name} ({username})\n📞 {phone}\n📍 {address}\n\n"
+
     for item in cart:
-        order_text += f"• {item['name']} — {item['price']}₽\n"
-    order_text += f"\n💰 Итого: {total}₽"
+        text += f"• {item['name']} — {item['price']}₽\n"
+
+    text += f"\n💰 {total}₽"
+
     try:
-        await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=order_text)
+        await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=text)
     except Exception as e:
-        logging.error(f"Ошибка: {e}")
-    context.user_data["cart"] = []
-    keyboard = [[InlineKeyboardButton("🛍️ Новый заказ", callback_data="menu")]]
-    await update.message.reply_text(
-        f"✅ Заказ принят!\n📍 Адрес: {address}\n💰 Сумма: {total}₽\n\n⏰ Доставим за 30-45 минут!",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+        logging.error(e)
+
+    context.user_data.clear()
+
+    await update.message.reply_text("✅ Заказ принят!")
+
     return ConversationHandler.END
 
 async def close(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("👋 До свидания!")
+    await query.edit_message_text("👋 До свидания")
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Отменено.")
+    await update.message.reply_text("❌ Отменено")
     return ConversationHandler.END
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    logging.error(f"Ошибка: {context.error}")
+
 def main():
+    if not TOKEN:
+        raise ValueError("TOKEN не задан")
+
     app = Application.builder().token(TOKEN).build()
+
     conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(start_order, pattern="^order$")],
         states={
@@ -159,6 +221,7 @@ def main():
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(show_menu, pattern="^menu$"))
@@ -167,8 +230,11 @@ def main():
     app.add_handler(CallbackQueryHandler(show_cart, pattern="^cart$"))
     app.add_handler(CallbackQueryHandler(clear_cart, pattern="^clear$"))
     app.add_handler(CallbackQueryHandler(close, pattern="^close$"))
+
+    app.add_error_handler(error_handler)
+
     print("🤖 Бот запущен!")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
