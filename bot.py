@@ -1,7 +1,9 @@
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-TOKEN = "8999253238:AAGdBsxcBOsbjstAH5e374VY8IBsPvC8bWY"
+TOKEN = "8999253238:AAExtYuaQxfGwcrdY2HN0U3-zWxMP-u52y8"
 
 MENU = {
     "🍕 Пицца": [("Маргарита", 450), ("Пепперони", 550)],
@@ -27,6 +29,19 @@ async def category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton(f"{n} — {p}₽", callback_data="menu")] for n, p in items]
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="menu")])
     await query.edit_message_text(f"{cat}:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+    def log_message(self, format, *args):
+        pass
+
+def run_web():
+    HTTPServer(("0.0.0.0", 10000), Handler).serve_forever()
+
+threading.Thread(target=run_web, daemon=True).start()
 
 app = Application.builder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
